@@ -1,2 +1,2 @@
 # Dirac-Inspector
-Inspector of DIRAC files of transformed molecular integrals
+Inspector of DIRAC files containing transformed molecular integrals.
