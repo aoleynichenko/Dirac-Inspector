@@ -1,9 +1,11 @@
-//
-// Created by Alexander Oleynichenko on 29.12.2023.
-//
+/*
+ * Inspector of DIRAC files containing transformed molecular integrals.
+ *
+ * 2024 Alexander Oleynichenko
+ */
 
-#ifndef MRCONEE_H
-#define MRCONEE_H
+#ifndef DIRAC_INSPECTOR_MRCONEE_H
+#define DIRAC_INSPECTOR_MRCONEE_H
 
 #include <stdio.h>
 
@@ -32,4 +34,4 @@ void free_mrconee_data(mrconee_data_t *data);
 
 void print_mrconee_data(FILE *out, mrconee_data_t *data);
 
-#endif //MRCONEE_H
+#endif // DIRAC_INSPECTOR_MRCONEE_H

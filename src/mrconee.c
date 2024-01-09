@@ -1,6 +1,8 @@
-//
-// Created by Alexander Oleynichenko on 29.12.2023.
-//
+/*
+ * Inspector of DIRAC files containing transformed molecular integrals.
+ *
+ * 2024 Alexander Oleynichenko
+ */
 
 #include "mrconee.h"
 
@@ -30,19 +32,17 @@ void rename_irreps_dirac_to_expt(int nsym, char **rep_names);
 
 int test_dirac_integer_size(char *path);
 
-int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *data);
+int mrconee_read_header(unf_file_t *file, mrconee_data_t *data);
 
-int mrconee_read_fermion_irrep_occs(unf_file_t *file, int dirac_int_size, mrconee_data_t *data,
-                                    int *fermion_irrep_occs);
+int mrconee_read_fermion_irrep_occs(unf_file_t *file, mrconee_data_t *data, int *fermion_irrep_occs);
 
-int mrconee_read_abelian_irreps(unf_file_t *file, int dirac_int_size, mrconee_data_t *data);
+int mrconee_read_abelian_irreps(unf_file_t *file, mrconee_data_t *data);
 
-int mrconee_read_multiplication_table(unf_file_t *file, int dirac_int_size, mrconee_data_t *data);
+int mrconee_read_multiplication_table(unf_file_t *file, mrconee_data_t *data);
 
-int mrconee_read_spinor_info(unf_file_t *file, int dirac_int_size, mrconee_data_t *data,
-                             int *fermion_irrep_occs);
+int mrconee_read_spinor_info(unf_file_t *file, mrconee_data_t *data, int *fermion_irrep_occs);
 
-int mrconee_read_fock(unf_file_t *file, int dirac_int_size, mrconee_data_t *data);
+int mrconee_read_fock(unf_file_t *file, mrconee_data_t *data);
 
 
 mrconee_data_t *read_mrconee(char *path)
@@ -52,7 +52,12 @@ mrconee_data_t *read_mrconee(char *path)
         return NULL;
     }
 
+    // determine which integers were used in DIRAC: 4-byte or 8-byte
     int dirac_int_size = test_dirac_integer_size(path);
+    if (dirac_int_size != DIRAC_INT_4 && dirac_int_size != DIRAC_INT_8) {
+        return NULL; // error
+    }
+
     mrconee_data_t *data = (mrconee_data_t *) calloc(1, sizeof(mrconee_data_t));
     data->dirac_int_size = dirac_int_size;
 
@@ -61,7 +66,7 @@ mrconee_data_t *read_mrconee(char *path)
      * header: number of spinors, SCF and nuclear repulsion energy,
      * inversion symmetry, point group type, spinfree
      */
-    int error_code = mrconee_read_header(file, dirac_int_size, data);
+    int error_code = mrconee_read_header(file, data);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -72,7 +77,7 @@ mrconee_data_t *read_mrconee(char *path)
      * number of electrons in each fermion irrep
      */
     int fermion_irrep_occs[8];
-    error_code = mrconee_read_fermion_irrep_occs(file, dirac_int_size, data, fermion_irrep_occs);
+    error_code = mrconee_read_fermion_irrep_occs(file, data, fermion_irrep_occs);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -82,7 +87,7 @@ mrconee_data_t *read_mrconee(char *path)
      * record 3
      * irreps of abelian subgroup
      */
-    error_code = mrconee_read_abelian_irreps(file, dirac_int_size, data);
+    error_code = mrconee_read_abelian_irreps(file, data);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -92,7 +97,7 @@ mrconee_data_t *read_mrconee(char *path)
      * record 4
      * irrep multiplication table
      */
-    error_code = mrconee_read_multiplication_table(file, dirac_int_size, data);
+    error_code = mrconee_read_multiplication_table(file, data);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -102,7 +107,7 @@ mrconee_data_t *read_mrconee(char *path)
      * record 5
      * information about spinors
      */
-    error_code = mrconee_read_spinor_info(file, dirac_int_size, data, fermion_irrep_occs);
+    error_code = mrconee_read_spinor_info(file, data, fermion_irrep_occs);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -112,7 +117,7 @@ mrconee_data_t *read_mrconee(char *path)
      * record 6
      * Fock matrix
      */
-    error_code = mrconee_read_fock(file, dirac_int_size, data);
+    error_code = mrconee_read_fock(file, data);
     if (error_code == EXIT_FAILURE) {
         free_mrconee_data(data);
         return NULL;
@@ -122,7 +127,12 @@ mrconee_data_t *read_mrconee(char *path)
 }
 
 
-int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *data)
+/**
+ * record 1
+ * header: number of spinors, SCF and nuclear repulsion energy,
+ * inversion symmetry, point group type, spinfree
+ */
+int mrconee_read_header(unf_file_t *file, mrconee_data_t *data)
 {
     // total number of spinors
     int32_t num_spinors;
@@ -142,9 +152,9 @@ int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *da
     double scf_energy;
 
     int nread;
-    if (dirac_int_size == DIRAC_INT_4) {
+    if (data->dirac_int_size == DIRAC_INT_4) {
         nread = unf_read(file, "2i4,r8,4i4,r8", &num_spinors, &breit, &enuc, &invsym, &nz_arith, &is_spinfree,
-                                 &norb_total, &scf_energy);
+                         &norb_total, &scf_energy);
     }
     else {
         int64_t num_spinors_8;
@@ -155,8 +165,8 @@ int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *da
         int64_t norb_total_8;
 
         nread = unf_read(file, "2i8,r8,4i8,r8", &num_spinors_8, &breit_8, &enuc, &invsym_8, &nz_arith_8,
-                                 &is_spinfree_8,
-                                 &norb_total_8, &scf_energy);
+                         &is_spinfree_8,
+                         &norb_total_8, &scf_energy);
 
         num_spinors = (int32_t) num_spinors_8;
         breit = (int32_t) breit_8;
@@ -166,7 +176,7 @@ int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *da
         norb_total = (int32_t) norb_total_8;
     }
 
-    if (nread != 8) {
+    if (nread != 8 || unf_error(file)) {
         return EXIT_FAILURE;
     }
 
@@ -181,8 +191,11 @@ int mrconee_read_header(unf_file_t *file, int dirac_int_size, mrconee_data_t *da
 }
 
 
-int mrconee_read_fermion_irrep_occs(unf_file_t *file, int dirac_int_size, mrconee_data_t *data,
-                                    int *fermion_irrep_occs)
+/**
+ * record 2
+ * number of electrons in each fermion irrep
+ */
+int mrconee_read_fermion_irrep_occs(unf_file_t *file, mrconee_data_t *data, int *fermion_irrep_occs)
 {
     int invsym = data->invsym;
 
@@ -200,11 +213,10 @@ int mrconee_read_fermion_irrep_occs(unf_file_t *file, int dirac_int_size, mrcone
     int32_t ndelete[8];
 
     int nread;
-    if (dirac_int_size == DIRAC_INT_4) {
+    if (data->dirac_int_size == DIRAC_INT_4) {
         nread = unf_read(file, "i4,c14[i4],6i4[i4]",
-                                 &nsymrp, repnames, &nsymrp, nactive, &nsymrp,
-                                 nstr, &invsym, nfrozen[0], &invsym, nfrozen[1], &invsym, nfrozen[2], &invsym, ndelete,
-                                 &invsym);
+                         &nsymrp, repnames, &nsymrp, nactive, &nsymrp, nstr, &invsym, nfrozen[0], &invsym,
+                         nfrozen[1], &invsym, nfrozen[2], &invsym, ndelete, &invsym);
     }
     else {
         int64_t nsymrp_8;
@@ -214,9 +226,8 @@ int mrconee_read_fermion_irrep_occs(unf_file_t *file, int dirac_int_size, mrcone
         int64_t ndelete_8[8];
 
         nread = unf_read(file, "i8,c14[i4],6i8[i4]",
-                                 &nsymrp_8, repnames, &nsymrp_8, nactive_8, &nsymrp_8,
-                                 nstr_8, &invsym, nfrozen_8[0], &invsym, nfrozen_8[1], &invsym, nfrozen_8[2], &invsym,
-                                 ndelete_8, &invsym);
+                         &nsymrp_8, repnames, &nsymrp_8, nactive_8, &nsymrp_8, nstr_8, &invsym, nfrozen_8[0], &invsym,
+                         nfrozen_8[1], &invsym, nfrozen_8[2], &invsym, ndelete_8, &invsym);
 
         for (int i = 0; i < nsymrp_8; i++) {
             nactive[i] = (int32_t) nactive_8[i];
@@ -235,7 +246,11 @@ int mrconee_read_fermion_irrep_occs(unf_file_t *file, int dirac_int_size, mrcone
 }
 
 
-int mrconee_read_abelian_irreps(unf_file_t *file, int dirac_int_size, mrconee_data_t *data)
+/**
+ * record 3
+ * irreps of abelian subgroup
+ */
+int mrconee_read_abelian_irreps(unf_file_t *file, mrconee_data_t *data)
 {
     // number of fermion irreps in the Abelian subgroup
     int32_t nsymrpa;
@@ -243,7 +258,7 @@ int mrconee_read_abelian_irreps(unf_file_t *file, int dirac_int_size, mrconee_da
     char repanames[4 * 4 * 64];
 
     int nread;
-    if (dirac_int_size == DIRAC_INT_4) {
+    if (data->dirac_int_size == DIRAC_INT_4) {
         unf_read(file, "i4", &nsymrpa);
         int32_t size_repanames = 2 * nsymrpa;
         unf_backspace(file);
@@ -259,7 +274,7 @@ int mrconee_read_abelian_irreps(unf_file_t *file, int dirac_int_size, mrconee_da
 
         nsymrpa = (int32_t) nsymrpa_8;
     }
-    if (nread != 2) {
+    if (nread != 2 || unf_error(file)) {
         return EXIT_FAILURE;
     }
 
@@ -283,13 +298,17 @@ int mrconee_read_abelian_irreps(unf_file_t *file, int dirac_int_size, mrconee_da
 }
 
 
-int mrconee_read_multiplication_table(unf_file_t *file, int dirac_int_size, mrconee_data_t *data)
+/**
+ * record 4
+ * irrep multiplication table
+ */
+int mrconee_read_multiplication_table(unf_file_t *file, mrconee_data_t *data)
 {
     int nread;
     int32_t multb[64 * 64];
     int multb_size = data->num_irreps * data->num_irreps;
 
-    if (dirac_int_size == DIRAC_INT_4) {
+    if (data->dirac_int_size == DIRAC_INT_4) {
         nread = unf_read(file, "i4[i4]", multb, &multb_size);
     }
     else {
@@ -299,7 +318,7 @@ int mrconee_read_multiplication_table(unf_file_t *file, int dirac_int_size, mrco
             multb[i] = (int32_t) multb_8[i];
         }
     }
-    if (nread != 1) {
+    if (nread != 1 || unf_error(file)) {
         return EXIT_FAILURE;
     }
 
@@ -315,103 +334,67 @@ int mrconee_read_multiplication_table(unf_file_t *file, int dirac_int_size, mrco
 }
 
 
-int mrconee_read_spinor_info(unf_file_t *file, int dirac_int_size, mrconee_data_t *data,
-                             int *fermion_irrep_occs)
+/**
+ * record 5
+ * information about spinors.
+ * data are obtained as a chunk of raw bytes and then are decoded depending on
+ * the size of integers used in DIRAC calculation.
+ */
+int mrconee_read_spinor_info(unf_file_t *file, mrconee_data_t *data, int *fermion_irrep_occs)
 {
-    int invsym = data->invsym;
     int num_spinors = data->num_spinors;
-
-    // approximate boson irrep identification (needed in LUCIAREL and LUCITA)
-    int32_t *ibspi = (int32_t *) calloc(num_spinors, sizeof(int32_t));
-    // number of boson symmetry reps (for LUCITA)
-    int32_t nbsymrp;
-    // (?) number of Kramers pairs in each u/g irrep
-    int32_t norb[2];
-
-    struct irp_irpa_eorb {
-        int32_t irp; // irrep in parent group (1:gerade, 2:ungerade)
-        int32_t irpa; // irrep in Abelian subgroup
-        double eorb; // one-electron energies taken from SCF
-    };
-
-    struct irp_irpa_eorb *buf_irp_irpa_eorb = (struct irp_irpa_eorb *) calloc(
-        num_spinors, sizeof(struct irp_irpa_eorb));
-    int size_irp_irpa_eorb = num_spinors * sizeof(struct irp_irpa_eorb);
-
-    int nread;
-    if (dirac_int_size == DIRAC_INT_4) {
-        nread = unf_read(file, "c[i4],2i4[i4],i4", buf_irp_irpa_eorb, &size_irp_irpa_eorb, ibspi,
-                                 &num_spinors, norb, &invsym, &nbsymrp);
-        if (nread != 4) {
-            free(ibspi);
-            free(buf_irp_irpa_eorb);
-            return EXIT_FAILURE;
-        }
-    }
-    else {
-        int64_t *ibspi_8 = (int64_t *) calloc(data->num_spinors, sizeof(int64_t));
-        int64_t nbsymrp_8;
-        int64_t norb_8[2];
-
-        struct irp_irpa_eorb_8 {
-            int64_t irp;
-            int64_t irpa;
-            double eorb;
-        };
-
-        struct irp_irpa_eorb_8 *buf_irp_irpa_eorb_8 = (struct irp_irpa_eorb_8 *) calloc(
-            data->num_spinors, sizeof(struct irp_irpa_eorb_8));
-        int size_irp_irpa_eorb_8 = data->num_spinors * sizeof(struct irp_irpa_eorb_8);
-
-        nread = unf_read(file, "c[i4],2i8[i4],i8", buf_irp_irpa_eorb_8, &size_irp_irpa_eorb_8, ibspi_8,
-                                 &num_spinors, norb_8, &invsym, &nbsymrp_8);
-
-        if (nread != 4) {
-            free(ibspi);
-            free(ibspi_8);
-            free(buf_irp_irpa_eorb);
-            free(buf_irp_irpa_eorb_8);
-            return EXIT_FAILURE;
-        }
-
-        for (int i = 0; i < data->num_spinors; i++) {
-            buf_irp_irpa_eorb[i].irp = (int32_t) buf_irp_irpa_eorb_8[i].irp;
-            buf_irp_irpa_eorb[i].irpa = (int32_t) buf_irp_irpa_eorb_8[i].irpa;
-            buf_irp_irpa_eorb[i].eorb = buf_irp_irpa_eorb_8[i].eorb;
-        }
-
-        free(ibspi_8);
-        free(buf_irp_irpa_eorb_8);
-    }
 
     data->occ_numbers = (int *) calloc(data->num_spinors, sizeof(int));
     data->spinor_irreps = (int *) calloc(data->num_spinors, sizeof(int));
     data->spinor_energies = (double *) calloc(data->num_spinors, sizeof(double));
 
-    for (int i = 0; i < data->num_spinors; i++) {
-        data->spinor_irreps[i] = buf_irp_irpa_eorb[i].irpa - 1;
-        data->spinor_energies[i] = buf_irp_irpa_eorb[i].eorb;
-        int irp = buf_irp_irpa_eorb[i].irp;
+    int element_size = 2 * data->dirac_int_size + sizeof(double);
+    int32_t buf_size = num_spinors * element_size;
+    char *buf = (char *) calloc(num_spinors, element_size);
+
+    int nread = unf_read(file, "c[i4]", buf, &buf_size);
+    if (nread != 1 || unf_error(file)) {
+        free(buf);
+        return EXIT_FAILURE;
+    }
+
+    for (int i = 0; i < num_spinors; i++) {
+        // decode raw bytes containing irrep numbers and spinor energies
+        int irp = 0;
+        if (data->dirac_int_size == DIRAC_INT_4) {
+            irp = *((int32_t *) (buf + element_size * i));
+            data->spinor_irreps[i] = *((int32_t *) (buf + element_size * i + sizeof(int32_t))) - 1;
+            data->spinor_energies[i] = *((double *) (buf + element_size * i + 2 * sizeof(int32_t)));
+        }
+        else {
+            irp = (int) *((int64_t *) (buf + element_size * i));
+            data->spinor_irreps[i] = (int) *((int64_t *) (buf + element_size * i + sizeof(int64_t))) - 1;
+            data->spinor_energies[i] = *((double *) (buf + element_size * i + 2 * sizeof(int64_t)));
+        }
+
         if (fermion_irrep_occs[irp - 1] > 0) {
             fermion_irrep_occs[irp - 1] -= 1;
             data->occ_numbers[i] = 1;
         }
     }
 
-    free(ibspi);
-    free(buf_irp_irpa_eorb);
+    free(buf);
 
     return EXIT_SUCCESS;
 }
 
 
-int mrconee_read_fock(unf_file_t *file, int dirac_int_size, mrconee_data_t *data)
+/**
+ * record 6
+ * Fock matrix
+ */
+int mrconee_read_fock(unf_file_t *file, mrconee_data_t *data)
 {
     data->fock = (double _Complex *) calloc(data->num_spinors * data->num_spinors, sizeof(double _Complex));
     int32_t fock_size = data->num_spinors * data->num_spinors;
 
     int nread = unf_read(file, "z8[i4]", data->fock, &fock_size);
-    if (nread != 1) {
+    if (nread != 1 || unf_error(file)) {
         return EXIT_FAILURE;
     }
 
@@ -465,42 +448,29 @@ void free_mrconee_data(mrconee_data_t *data)
 }
 
 
+/**
+ * Determines which version of DIRAC was used to generate molecular integrals,
+ * with 4-byte or 8-byte integers.
+ */
 int test_dirac_integer_size(char *path)
 {
     unf_file_t *file = unf_open(path, "r", UNF_ACCESS_SEQUENTIAL);
     if (file == NULL) {
         return -1;
     }
+    int rec_size = unf_next_rec_size(file);
+    unf_close(file);
 
-    double enuc;
-    double scf_energy;
-    int32_t num_spinors;
-    int32_t breit;
-    int32_t invsym;
-    int32_t nz_arith;
-    int32_t is_spinfree;
-    int32_t norb_total;
-
-    unf_read(file, "2i4,r8,4i4,r8", &num_spinors, &breit, &enuc, &invsym, &nz_arith, &is_spinfree,
-                     &norb_total, &scf_energy);
-
-    if (!(invsym == 1 || invsym == 2)) {
+    // size = 6 integers + 2 reals
+    if (rec_size == (6 * sizeof(int32_t) + 2 * sizeof(double))) {
+        return DIRAC_INT_4;
+    }
+    else if (rec_size == (6 * sizeof(int64_t) + 2 * sizeof(double))) {
         return DIRAC_INT_8;
     }
-
-    if (!(nz_arith == 1 || nz_arith == 2 || nz_arith == 4)) {
-        return DIRAC_INT_8;
+    else {
+        return -1; // error
     }
-
-    if (!(is_spinfree == -1 || is_spinfree == 0 || is_spinfree == 1)) {
-        return DIRAC_INT_8;
-    }
-
-    if (norb_total < 0) {
-        return DIRAC_INT_8;
-    }
-
-    return DIRAC_INT_4;
 }
 
 
@@ -580,7 +550,7 @@ static void detect_dirac_point_group(char **rep_names, char *group_name, int *fu
         *fully_sym_irrep = 32;
         strcpy(group_name, "D2h");
     }
-    // double groups
+        // double groups
     else if (strcmp(rep_names[0], "   A") == 0 && strcmp(rep_names[1], "   a") == 0) {
         *fully_sym_irrep = 1;
         strcpy(group_name, "C1");
@@ -678,7 +648,7 @@ void rename_irreps_dirac_to_expt(int nsym, char **rep_names)
         rep_name_exists(nsym, rep_names, "Au b") &&
         !rep_name_exists(nsym, rep_names, "Bg a") && // not C2h
         !rep_name_exists(nsym, rep_names, "B3ua") // not D2h
-    ) {
+        ) {
         char *translation[] = {
             "Ag_a", "Au_a",
             "Ag_b", "Au_b",
@@ -751,12 +721,12 @@ void rename_irreps_dirac_to_expt(int nsym, char **rep_names)
     }
     // D2h nonrel
     if (strcmp(rep_names[0], "Ag a") == 0 && (
-            strcmp(rep_names[1], "B1ua") == 0 ||
-            strcmp(rep_names[1], "B2ua") == 0 ||
-            strcmp(rep_names[1], "B3ua") == 0 ||
-            strcmp(rep_names[1], "B1ga") == 0 ||
-            strcmp(rep_names[1], "B2ga") == 0 ||
-            strcmp(rep_names[1], "B3ga") == 0)) {
+        strcmp(rep_names[1], "B1ua") == 0 ||
+        strcmp(rep_names[1], "B2ua") == 0 ||
+        strcmp(rep_names[1], "B3ua") == 0 ||
+        strcmp(rep_names[1], "B1ga") == 0 ||
+        strcmp(rep_names[1], "B2ga") == 0 ||
+        strcmp(rep_names[1], "B3ga") == 0)) {
         char *translation[] = {
             "Ag_a", "B1u_a", "B2u_a", "B3g_a", "B3u_a", "B2g_a", "B1g_a", "Au_a",
             "Ag_b", "B1u_b", "B2u_b", "B3g_b", "B3u_b", "B2g_b", "B1g_b", "Au_b",

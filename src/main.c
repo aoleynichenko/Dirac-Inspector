@@ -1,13 +1,12 @@
-#include <complex.h>
+/*
+ * Inspector of DIRAC files containing transformed molecular integrals.
+ *
+ * 2024 Alexander Oleynichenko
+ */
+
 #include <ctype.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <math.h>
 
 #include "mdprop.h"
 #include "mrconee.h"

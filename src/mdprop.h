@@ -1,12 +1,14 @@
-//
-// Created by Alexander Oleynichenko on 29.12.2023.
-//
+/*
+ * Inspector of DIRAC files containing transformed molecular integrals.
+ *
+ * 2024 Alexander Oleynichenko
+ */
 
-#ifndef MDPROP_H
-#define MDPROP_H
+#ifndef DIRAC_INSPECTOR_MDPROP_H
+#define DIRAC_INSPECTOR_MDPROP_H
 
 #include "mrconee.h"
 
 void read_mdprop(char *path, mrconee_data_t *mrconee_data);
 
-#endif //MDPROP_H
+#endif // DIRAC_INSPECTOR_MDPROP_H

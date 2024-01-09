@@ -1,17 +1,15 @@
-//
-// Created by Alexander Oleynichenko on 29.12.2023.
-//
+/*
+ * Inspector of DIRAC files containing transformed molecular integrals.
+ *
+ * 2024 Alexander Oleynichenko
+ */
 
 #include "mdprop.h"
 
 #include <complex.h>
 #include <ctype.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <string.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <math.h>
 
@@ -37,7 +35,11 @@ void read_mdprop(char *path, mrconee_data_t *mrconee_data)
          * name of the property
          */
         char oper_name[32];
-        unf_read(file, "c32", oper_name);
+        int nread = unf_read(file, "c32", oper_name);
+        if (nread != 1 || unf_error(file)) {
+            printf(" error occured while reading MDPROP\n");
+            break;
+        }
         memmove(oper_name, oper_name + 24, 8);
         oper_name[8] = '\0';
 
@@ -51,10 +53,15 @@ void read_mdprop(char *path, mrconee_data_t *mrconee_data)
          * get property matrix elements
          */
         int record_size = unf_next_rec_size(file);
-        int nspinors = round(sqrt(record_size / (sizeof(double _Complex))));
-        double _Complex *oper_matrix = (double _Complex *) calloc(nspinors * nspinors, sizeof(double _Complex));
-        int n_matrix_elements = nspinors * nspinors;
-        unf_read(file, "z8[i4]", oper_matrix, &n_matrix_elements);
+        int num_spinors = round(sqrt(record_size / (sizeof(double _Complex))));
+        double _Complex *oper_matrix = (double _Complex *) calloc(num_spinors * num_spinors, sizeof(double _Complex));
+        int n_matrix_elements = num_spinors * num_spinors;
+        nread = unf_read(file, "z8[i4]", oper_matrix, &n_matrix_elements);
+        if (nread != 1 || unf_error(file)) {
+            printf(" error occured while reading MDPROP\n");
+            free(oper_matrix);
+            break;
+        }
 
         /*
          * analysis of a property matrix
@@ -64,7 +71,7 @@ void read_mdprop(char *path, mrconee_data_t *mrconee_data)
         int re_symm = 1;
         int im_symm = 1;
 
-        analyze_complex_matrix(nspinors, oper_matrix, &re_zero, &im_zero, &re_symm, &im_symm);
+        analyze_complex_matrix(num_spinors, oper_matrix, &re_zero, &im_zero, &re_symm, &im_symm);
         printf(" real part: ");
         if (re_zero) {
             printf("zero\n");
@@ -81,7 +88,7 @@ void read_mdprop(char *path, mrconee_data_t *mrconee_data)
         }
 
         if (mrconee_data) {
-            analyze_nonzero_blocks(nspinors, oper_matrix, mrconee_data);
+            analyze_nonzero_blocks(num_spinors, oper_matrix, mrconee_data);
         }
 
         /*
