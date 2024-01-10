@@ -8,9 +8,13 @@
 
 #include <stdbool.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #include "libunf.h"
 #include "mrconee.h"
+
+double abs_time();
+
 
 void read_mdcint(char *path, mrconee_data_t *mrconee_data)
 {
@@ -104,6 +108,7 @@ void read_mdcint(char *path, mrconee_data_t *mrconee_data)
     int64_t ikr8 = 0;
     int64_t jkr8 = 0;
     int64_t nonzr8 = 0;
+    double time_start = abs_time();
 
     while (true) {
         if (mrconee_data->group_arith == 1 || mrconee_data->is_spinfree == 1) {
@@ -146,7 +151,9 @@ void read_mdcint(char *path, mrconee_data_t *mrconee_data)
         count_non_zero += nonzr;
     }
 
-    printf(" number of non-zero ints    %lld\n\n", count_non_zero);
+    double time_finish = abs_time();
+    printf(" number of non-zero ints    %lld\n", count_non_zero);
+    printf(" time for reading 2e ints   %.2f sec\n\n", time_finish - time_start);
 
     /*
      * cleanup
@@ -159,4 +166,15 @@ void read_mdcint(char *path, mrconee_data_t *mrconee_data)
     free(val_buf_real);
     free(val_buf_complex);
     free(kr);
+}
+
+
+/**
+ * Interface to the system-dependent functions for time measurements.
+ */
+double abs_time()
+{
+    struct timeval cur_time;
+    gettimeofday(&cur_time, NULL);
+    return (cur_time.tv_sec * 1000000u + cur_time.tv_usec) / 1.e6;
 }
